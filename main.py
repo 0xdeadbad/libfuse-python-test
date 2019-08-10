@@ -1,5 +1,4 @@
 import os, stat, errno, requests, json, base64
-import utils
 
 try:
     import _find_fuse_parts
@@ -31,6 +30,7 @@ root['.']['type'] = 'dir'
 root['.']['stat'] = MyStat()
 root['.']['stat'].st_mode = stat.S_IFDIR | 0o755
 root['.']['stat'].st_nlink = 2
+root['.']['content'] = b''
 root['..'] = errno.ENOENT
 
 root['usr'] = {}
@@ -40,6 +40,7 @@ root['usr']['.']['stat'] = {}
 root['usr']['.']['stat'] = MyStat()
 root['usr']['.']['stat'].st_mode = stat.S_IFDIR | 0o755
 root['usr']['.']['stat'].st_nlink = 2
+root['usr']['.']['content'] = b''
 root['usr']['..'] = root
 
 root['home'] = {}
@@ -49,6 +50,7 @@ root['home']['.']['stat'] = {}
 root['home']['.']['stat'] = MyStat()
 root['home']['.']['stat'].st_mode = stat.S_IFDIR | 0o755
 root['home']['.']['stat'].st_nlink = 2
+root['home']['.']['content'] = b''
 root['home']['..'] = root
 
 root['home']['config'] = {}
@@ -60,6 +62,12 @@ root['home']['config']['.']['stat'].st_nlink = 1
 root['home']['config']['.']['content'] = b'Hello. This is a configuration file!\n'
 root['home']['config']['.']['stat'].st_size = len(root['home']['config']['.']['content'])
 root['home']['config']['..'] = root['home']
+
+def print_vars(*a):
+    print('debug xd')
+    for i in a:
+        print(i)
+    print('xd debug')
 
 def search_path(path):
     global root
@@ -108,10 +116,40 @@ class DontpadFS(Fuse):
             buf = b''
         return buf
 
-    def write(self, path, buf, offset):
+    def write(self, path, buf, offset, t):
+        #print_vars(path, buf, offset, t)
         f = search_path(path)
         if not f:
             return -errno.ENOENT
+        print(f)
+        slen = len(f['.']['content'])
+        blen = len(buf)
+        if offset <= slen:
+            if offset + blen < slen:
+                #content[:offset] + buf + content[offset + size]
+                f['.']['content'] = f['.']['content'][:offset] + buf + f['.']['content'][:offset + blen]
+            else:
+                f['.']['content'] = f['.']['content'][:offset] + buf
+        else:
+            return 0
+        return len(buf)
+
+    def create(self, path, mode, flags):
+        a = path.split('/')
+        f = search_path('/'.join(a[:-1]))
+        name = a[-1]
+        if not f:
+            return -errno.ENOENT
+        f[name] = {}
+        f[name]['.'] = {}
+        f[name]['.']['type'] = '.'
+        f[name]['.']['stat'] = MyStat()
+        f[name]['.']['stat'].st_mode = mode
+        f[name]['.']['stat'].st_nlink = 1
+        f[name]['.']['stat'].st_size = 1024
+        f[name]['.']['content'] = b''
+
+        return f[name]['.']['stat']
 
 
 def main():
